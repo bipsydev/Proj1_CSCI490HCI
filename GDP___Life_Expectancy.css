@@ -176,18 +176,20 @@ td.hl{ position:relative; }
    single data-id) get the same dotted-underline affordance as
    text spans, so it's visually clear the whole row is clickable. */
 td.hl[data-group]{ border-bottom:1px dotted var(--accent); }
-td.hl[data-group].active{ border-bottom:1px solid var(--active); }
+td.hl[data-group].active{ border-bottom:1px solid var(--selection-color, var(--active)); }
 /* Generic "selected" look shared by any .hl element (span or td)
    once the script adds the .active class to it. */
 .hl.active{
   background:var(--active-soft);
-  box-shadow:0 0 0 1px var(--active) inset;
+  background:color-mix(in srgb, var(--selection-color, var(--active)) 18%, transparent);
+  box-shadow:0 0 0 1px var(--selection-color, var(--active)) inset;
 }
 /* Text spans additionally swap their dotted underline for a
    solid gold one when active, to match the table-cell treatment. */
 span.hl.active{
   background:var(--active-soft);
-  border-bottom:1px solid var(--active);
+  background:color-mix(in srgb, var(--selection-color, var(--active)) 18%, transparent);
+  border-bottom:1px solid var(--selection-color, var(--active));
 }
 .scroll-note{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;

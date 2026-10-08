@@ -32,32 +32,71 @@
   var wrap = document.querySelector('.wrap');
   var svg = document.getElementById('linkSvg');
   var tableCol = document.querySelector('.table-col');
+  var selectionColors = [
+    '#e53935', '#fb8c00', '#fdd835', '#43a047',
+    '#26c6b8', '#1d4ed8', '#8e24aa', '#ec4899', '#4d4d4d'
+  ];
+  var hoverTarget = null;
 
-  // The currently "pinned" (clicked) selection, or null if nothing
-  // is pinned. `key` is used only to detect "clicked the same
-  // thing again" (to toggle it off); `ids` is the full list of
-  // data-id values that selection covers (length 1 for a single
-  // figure, or several for a country group).
-  var pinned = null; // { key: string, ids: [dataId, dataId, ...] }
+  // The currently selected figures/groups. Control-click adds or
+  // removes one selection; a regular click clears the collection.
+  var pinned = []; // [{ key: string, ids: [dataId, dataId, ...] }]
 
   // Turn the "active" (gold highlight) CSS class on/off for every
   // element sharing a given data-id — this is what makes a figure
   // in the essay and its counterpart in the table light up together,
   // since both carry the same data-id and this selector finds all
   // of them regardless of which column they're in.
-  function setActive(id, on){
+  function setActive(id, on, color){
     document.querySelectorAll('[data-id="'+CSS.escape(id)+'"]').forEach(function(e){
       e.classList.toggle('active', on);
+      if(on && color) e.style.setProperty('--selection-color', color);
+      if(!on) e.style.removeProperty('--selection-color');
     });
   }
   // Convenience: apply setActive() to a whole list of ids at once
   // (used for country-group selections, which cover several ids).
-  function setActiveMany(ids, on){ ids.forEach(function(id){ setActive(id, on); }); }
+  function setActiveMany(ids, on, color){ ids.forEach(function(id){ setActive(id, on, color); }); }
 
   // True if `id` is part of the currently pinned selection — used
   // so that mousing over a figure that's already pinned doesn't
   // accidentally un-highlight it again on mouseleave.
-  function isPinned(id){ return pinned && pinned.ids.indexOf(id) !== -1; }
+  function pinnedIds(){
+    var ids = {};
+    pinned.forEach(function(selection){
+      selection.ids.forEach(function(id){ ids[id] = true; });
+    });
+    return Object.keys(ids);
+  }
+  function isPinned(id){ return pinnedIds().indexOf(id) !== -1; }
+
+  function colorForSelection(key, id){
+    var index = pinned.findIndex(function(selection){
+      return selection.key === key || selection.ids.indexOf(id) !== -1;
+    });
+    return selectionColors[(index === -1 ? pinned.length : index) % selectionColors.length];
+  }
+
+  function restorePinnedStyles(){
+    pinned.forEach(function(selection, selectionIndex){
+      setActiveMany(selection.ids, true, selectionColors[selectionIndex % selectionColors.length]);
+    });
+  }
+
+  function refreshHover(){
+    if(!hoverTarget) return;
+    var color = hoverTarget.ctrlKey ? colorForSelection(hoverTarget.key, hoverTarget.id) : selectionColors[0];
+    if(hoverTarget.id){
+      setActive(hoverTarget.id, true, color);
+    } else {
+      hoverTarget.ids.forEach(function(id){
+        var groupColor = hoverTarget.ctrlKey
+          ? colorForSelection(hoverTarget.key, id)
+          : selectionColors[0];
+        setActive(id, true, groupColor);
+      });
+    }
+  }
 
   // Given a 2-letter country code like "jp", scan every element
   // with a data-id in the whole document and collect the ones that
@@ -81,7 +120,7 @@
   // a selection is made AND again on every scroll/resize while a
   // selection is pinned (see reposition()), so the lines always
   // track the current on-screen position of both endpoints.
-  function drawLinesForIds(ids){
+  function drawLinesForIds(ids, color){
     // Coordinates below are computed relative to `wrap`'s top-left
     // corner, because that's what the absolutely-positioned SVG
     // overlay uses as its own origin (see .link-svg CSS).
@@ -133,13 +172,13 @@
       var midx = (x1 + x2) / 2;
       frag +=
         '<path d="M '+x1+' '+y1+' C '+midx+' '+y1+', '+midx+' '+y2+', '+x2+' '+y2+'" '+
-          'stroke="var(--active)" stroke-width="2" fill="none" opacity="'+(clipped ? 0.55 : 0.9)+'" '+
+          'stroke="'+color+'" stroke-width="2" fill="none" opacity="'+(clipped ? 0.55 : 0.9)+'" '+
           // when clamped to the panel edge, draw it dashed/faded so
           // it visually reads as "still connected, just off-screen"
           // rather than a normal, fully-resolved connector line
           (clipped ? 'stroke-dasharray="1,4" stroke-linecap="round"' : '') + '/>'+
         // small solid dot always marks the essay-side endpoint
-        '<circle cx="'+x1+'" cy="'+y1+'" r="3.5" fill="var(--active)"/>';
+        '<circle cx="'+x1+'" cy="'+y1+'" r="3.5" fill="'+color+'"/>';
       if(clipped){
         // Instead of a dot (which would sit outside the visible
         // table area), draw a small triangle right at the panel
@@ -148,39 +187,53 @@
         var dir = offTop ? -1 : 1; // -1 = row is above the visible panel, 1 = below
         frag +=
           '<polygon points="'+(x2-5)+','+y2+' '+(x2+5)+','+y2+' '+x2+','+(y2 + dir*7)+'" '+
-            'fill="var(--active)" opacity="0.85"/>';
+            'fill="'+color+'" opacity="0.85"/>';
       } else {
         // Normal case: the row is fully visible, so mark its exact
         // position with the same kind of dot used on the essay side.
-        frag += '<circle cx="'+x2+'" cy="'+y2+'" r="3.5" fill="var(--active)"/>';
+        frag += '<circle cx="'+x2+'" cy="'+y2+'" r="3.5" fill="'+color+'"/>';
       }
     });
-    svg.innerHTML = frag; // replace all previous lines with this frame's set
+    return frag;
   }
 
-  // Clear the current pinned selection entirely: remove the
-  // "active" styling from every id it covered and wipe the lines.
-  // Called when the same element is clicked again, or when the
-  // user clicks anywhere else on the page (see the document-level
-  // click listener near the bottom).
+  function drawLinesForSelections(){
+    var frag = '';
+    pinned.forEach(function(selection, index){
+      frag += drawLinesForIds(selection.ids, selectionColors[index % selectionColors.length]);
+    });
+    svg.innerHTML = frag;
+  }
+
+  // Clear every selected figure and connector line.
   function unpin(){
-    if(!pinned) return;
-    setActiveMany(pinned.ids, false);
-    pinned = null;
+    if(!pinned.length) return;
+    setActiveMany(pinnedIds(), false);
+    pinned = [];
     clearLines();
   }
 
-  // Pin a new selection. `key` uniquely identifies *what* was
-  // clicked (a single data-id, or "group:xx" for a country name)
-  // so a second click on the exact same thing toggles it back off
-  // instead of re-pinning it. `ids` is the full list of data-id
-  // values that selection should highlight/connect.
-  function pin(key, ids){
-    if(pinned && pinned.key === key){ unpin(); return; } // clicked the same thing twice -> deselect
-    if(pinned) setActiveMany(pinned.ids, false);          // clear any previous selection first
-    pinned = { key: key, ids: ids };
-    setActiveMany(ids, true);
-    drawLinesForIds(ids);
+  // Toggle one control-clicked selection. Recompute the union so
+  // overlapping group and figure selections remain highlighted.
+  function pin(key, ids, additive){
+    if(!additive){
+      unpin();
+      pinned.push({ key: key, ids: ids });
+      setActiveMany(ids, true, selectionColors[0]);
+      drawLinesForSelections();
+      return;
+    }
+    var previousIds = pinnedIds();
+    var index = pinned.findIndex(function(selection){ return selection.key === key; });
+    if(index !== -1) pinned.splice(index, 1);
+    else pinned.push({ key: key, ids: ids });
+    var activeIds = pinnedIds();
+    setActiveMany(previousIds, false);
+    pinned.forEach(function(selection, selectionIndex){
+      setActiveMany(selection.ids, true, selectionColors[selectionIndex % selectionColors.length]);
+    });
+    if(activeIds.length) drawLinesForSelections();
+    else clearLines();
   }
 
   // Re-run the line-drawing math for whatever is currently pinned.
@@ -188,7 +241,8 @@
   // their endpoints (or clamp to the table-panel edge) as the page
   // or the table panel moves. Does nothing if nothing is pinned.
   function reposition(){
-    if(pinned) drawLinesForIds(pinned.ids);
+    var activeIds = pinnedIds();
+    if(activeIds.length) drawLinesForSelections();
   }
 
   // --- Wiring: single-figure elements (data-id) -------------------
@@ -196,16 +250,21 @@
   // that carries a data-id gets the same three listeners:
   //   mouseenter -> preview-highlight this one id
   //   mouseleave -> un-highlight it again, unless it's pinned
-  //   click      -> pin (or un-pin) this one id, drawing its line
+  //   click      -> control-click toggles this id; regular click clears all
   document.querySelectorAll('[data-id]').forEach(function(el){
     var id = el.dataset.id;
-    el.addEventListener('mouseenter', function(){ setActive(id, true); });
-    el.addEventListener('mouseleave', function(){ if(!isPinned(id)) setActive(id, false); });
+    el.addEventListener('mouseenter', function(e){
+      hoverTarget = { key: id, id: id, ctrlKey: e.ctrlKey };
+      refreshHover();
+    });
+    el.addEventListener('mouseleave', function(){
+      hoverTarget = null;
+      if(isPinned(id)) restorePinnedStyles();
+      else setActive(id, false);
+    });
     el.addEventListener('click', function(e){
-      e.stopPropagation(); // prevent this bubbling up to the
-                            // document-level listener below, which
-                            // would immediately unpin what we just set
-      pin(id, [id]);
+      e.stopPropagation();
+      pin(id, [id], e.ctrlKey);
     });
   });
 
@@ -215,18 +274,20 @@
   // clicking the country name affects the whole set at once.
   document.querySelectorAll('[data-group]').forEach(function(el){
     var code = el.dataset.group;
-    el.addEventListener('mouseenter', function(){ setActiveMany(idsForGroup(code), true); });
+    el.addEventListener('mouseenter', function(e){
+      hoverTarget = { key: 'group:' + code, ids: idsForGroup(code), ctrlKey: e.ctrlKey };
+      refreshHover();
+    });
     el.addEventListener('mouseleave', function(){
+      hoverTarget = null;
       // only turn off the ids that aren't part of the current pin,
       // so hovering away from a pinned country doesn't undo the pin
+      if(idsForGroup(code).some(isPinned)) restorePinnedStyles();
       idsForGroup(code).forEach(function(id){ if(!isPinned(id)) setActive(id, false); });
     });
     el.addEventListener('click', function(e){
       e.stopPropagation();
-      // key is prefixed "group:" so it can never collide with a
-      // plain data-id string, keeping the "click same thing twice"
-      // toggle-off logic in pin() unambiguous
-      pin('group:' + code, idsForGroup(code));
+      pin('group:' + code, idsForGroup(code), e.ctrlKey);
     });
   });
 
@@ -234,6 +295,25 @@
   // linkable elements above, which already stopped propagation)
   // clears whatever is currently pinned.
   document.addEventListener('click', unpin);
+
+  window.addEventListener('keydown', function(e){
+    if(e.key === 'Control' && hoverTarget){
+      hoverTarget.ctrlKey = true;
+      refreshHover();
+    }
+  });
+  window.addEventListener('keyup', function(e){
+    if(e.key === 'Control' && hoverTarget){
+      hoverTarget.ctrlKey = false;
+      refreshHover();
+    }
+  });
+  window.addEventListener('blur', function(){
+    if(hoverTarget){
+      hoverTarget.ctrlKey = false;
+      refreshHover();
+    }
+  });
 
   // Keep connector lines accurate:
   // - `true` (capture phase) on the scroll listener is needed
@@ -294,7 +374,10 @@
   ths.forEach(function(th, i){
     th.tabIndex = 0;                              // keyboard reachable
     th.setAttribute('aria-sort', 'none');
-    th.addEventListener('click', function(e){ e.stopPropagation(); sortBy(i); });
+    th.addEventListener('click', function(e){
+      if(e.ctrlKey) e.stopPropagation();
+      sortBy(i);
+    });
     th.addEventListener('keydown', function(e){
       if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); sortBy(i); }
     });
