@@ -1,0 +1,269 @@
+/* ============================================================
+   THEME TOKENS
+   All colors are defined as CSS custom properties (variables)
+   here, then re-defined for dark mode below. Every other rule
+   in this file reads colors via var(--name) instead of hard-
+   coding hex values, so switching themes only means editing
+   the values in these two blocks.
+   ------------------------------------------------------------
+   --bg           page background
+   --panel        background of the table column
+   --ink          main text color
+   --ink-soft     secondary/muted text (captions, footer, notes)
+   --accent       the teal used for dotted underlines on
+                  hoverable/clickable figures
+   --accent-soft  pale wash used for table-row hover
+   --line         hairline borders (header rule, table borders)
+   --active       gold color used for the "selected" state and
+                  the connector lines drawn between text/table
+   --active-soft  pale gold background behind a selected figure
+   --num          color for numeric table cells
+   ============================================================ */
+:root{
+  --bg:#f6f4ef; --panel:#ffffff; --ink:#1f2420; --ink-soft:#5b6259;
+  --accent:#2f6f5e; --accent-soft:#dcece5; --line:#dcd7cb; --active:#f2c94c;
+  --active-soft:#fdf3d3; --num:#3a4a42;
+  box-sizing:border-box;
+  /* keep content clear of the notch/home-indicator on phones */
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+/* Automatic dark mode: applies when the visitor's OS/browser is
+   set to dark, UNLESS a data-theme="light" attribute is present
+   on <html> (not used here, but kept for future manual toggle). */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#171a17; --panel:#20241f; --ink:#e9e6dd; --ink-soft:#a8ab9f;
+    --accent:#7fc9ac; --accent-soft:#243b32; --line:#3a3f38; --active:#e0b23a;
+    --active-soft:#3a3117; --num:#cfe3d8;
+  }
+}
+/* Manual dark mode override, e.g. <html data-theme="dark">, for
+   a future toggle switch — currently unused but harmless. */
+:root[data-theme="dark"]{
+  --bg:#171a17; --panel:#20241f; --ink:#e9e6dd; --ink-soft:#a8ab9f;
+  --accent:#7fc9ac; --accent-soft:#243b32; --line:#3a3f38; --active:#e0b23a;
+  --active-soft:#3a3117; --num:#cfe3d8;
+}
+/* scroll-padding keeps anchor jumps clear of the safe-area inset too */
+html{scroll-padding-top:env(safe-area-inset-top,0px); height:100%;}
+*{box-sizing:border-box;}
+body{
+  margin:0; min-height:100%; background:var(--bg); color:var(--ink);
+  font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  line-height:1.6;
+}
+/* Page title + intro line above the two-column layout */
+header{
+  padding:2rem clamp(1rem,4vw,2.5rem) 1rem;
+  border-bottom:1px solid var(--line);
+}
+header h1{
+  font-size:clamp(1.5rem,3vw,2.1rem); margin:0 0 .3rem;
+  font-weight:600; letter-spacing:.01em;
+}
+header p{margin:0; color:var(--ink-soft); font-size:.95rem; max-width:60ch;}
+/* ------------------------------------------------------------
+   TWO-COLUMN LAYOUT
+   .wrap is the grid that holds the essay (left) and the table
+   panel (right). It's set to position:relative because the
+   connector-line SVG (.link-svg) is positioned absolutely
+   *inside* it — every coordinate the JS calculates for the
+   lines is measured relative to this element's top-left corner.
+   ------------------------------------------------------------ */
+.wrap{
+  display:grid; grid-template-columns: 1.15fr 1fr; gap:0;
+  align-items:start; position:relative;
+}
+/* Transparent SVG laid on top of the whole two-column area.
+   pointer-events:none means clicks/hovers pass straight through
+   it to the text and table underneath — it's purely visual.
+   Its innerHTML is rewritten by drawLinesForIds() in the script
+   below every time a selection changes or the page scrolls. */
+.link-svg{
+  position:absolute; inset:0; width:100%; height:100%;
+  pointer-events:none; overflow:visible; z-index:5;
+}
+/* On narrow/mobile screens the two columns stack vertically
+   instead of sitting side by side, so a left-to-right connector
+   line would no longer make visual sense — hide it there. */
+@media (max-width:880px){
+  .link-svg{ display:none; }
+}
+/* Same breakpoint: collapse the 2-column grid to a single
+   column so the table falls below the essay instead of beside it. */
+@media (max-width: 880px){
+  .wrap{grid-template-columns:1fr;}
+}
+/* Left column: the essay. max-width on the paragraphs keeps
+   line length readable even though the column itself stretches
+   wider on large screens. */
+.text-col{
+  padding:1.75rem clamp(1rem,4vw,2.5rem) 3rem;
+  font-size:1.02rem;
+}
+.text-col p{margin:0 0 1.15em; max-width:66ch;}
+
+/* Right column: the table panel.
+   - position:sticky + top:0 keeps it pinned in the viewport as
+     the visitor scrolls the (usually longer) essay text.
+   - max-height:100vh + overflow:auto turns the panel itself
+     into a scroll container once its content is taller than
+     the viewport, so long tables scroll independently of the
+     page. The JS reads this element's boundingClientRect
+     (as `panelRect`) to know where the visible edges of that
+     scroll area are, so it can clamp connector lines to it
+     instead of losing them off-screen (see drawLinesForIds). */
+.table-col{
+  padding:1.75rem clamp(1rem,4vw,2rem) 3rem;
+  background:var(--panel);
+  border-left:1px solid var(--line);
+  position: sticky; top:0;
+  align-self:flex-start;
+  max-height:100vh;
+  overflow:auto;
+}
+/* On mobile the sticky/scrolling behavior is turned off — the
+   table just flows normally underneath the essay. */
+@media (max-width:880px){
+  .table-col{position:static; max-height:none; border-left:none; border-top:1px solid var(--line);}
+}
+.table-col h2{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:.78rem; text-transform:none; letter-spacing:.02em;
+  color:var(--ink-soft); margin:0 0 .9rem; font-weight:600;
+}
+table{
+  border-collapse:collapse; width:100%; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:.78rem;
+}
+caption{caption-side:top; text-align:left;}
+th,td{
+  padding:.4rem .5rem; text-align:left; border-bottom:1px solid var(--line);
+  white-space:nowrap;
+}
+th{
+  font-weight:600; color:var(--ink-soft); font-size:.7rem;
+  border-bottom:1px solid var(--ink-soft);
+}
+td.num{ text-align:right; font-variant-numeric:tabular-nums; color:var(--num);}
+/* Faint highlight on the whole row under the mouse, independent
+   of the click-to-select system below. */
+tbody tr:hover{ background:var(--accent-soft); }
+
+/* ------------------------------------------------------------
+   INTERACTIVE "LINKED" ELEMENTS (.hl)
+   Any element the JS wires up — a figure in the essay
+   (span.hl[data-id]) or a table cell/name (td.hl[data-id] or
+   td.hl[data-group]) — gets the base .hl treatment: a pointer
+   cursor and a smooth transition into its "active" (selected)
+   look. The .active class itself is toggled entirely by the
+   <script> at the bottom of the file, never by CSS alone.
+   ------------------------------------------------------------ */
+.hl{
+  cursor:pointer; transition:background .15s ease, box-shadow .15s ease;
+  border-radius:3px;
+}
+/* Dotted underline marks a clickable figure inside the essay text. */
+span.hl{
+  border-bottom:1px dotted var(--accent); padding:0 1px;
+}
+/* position:relative isn't visual on its own — it's here so any
+   future absolutely-positioned marker inside a cell (none
+   currently) would anchor to the cell rather than the page. */
+td.hl{ position:relative; }
+/* Country-name cells (the ones with data-group rather than a
+   single data-id) get the same dotted-underline affordance as
+   text spans, so it's visually clear the whole row is clickable. */
+td.hl[data-group]{ border-bottom:1px dotted var(--accent); }
+td.hl[data-group].active{ border-bottom:1px solid var(--active); }
+/* Generic "selected" look shared by any .hl element (span or td)
+   once the script adds the .active class to it. */
+.hl.active{
+  background:var(--active-soft);
+  box-shadow:0 0 0 1px var(--active) inset;
+}
+/* Text spans additionally swap their dotted underline for a
+   solid gold one when active, to match the table-cell treatment. */
+span.hl.active{
+  background:var(--active-soft);
+  border-bottom:1px solid var(--active);
+}
+.scroll-note{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:.72rem; color:var(--ink-soft); margin:.75rem 0 0;
+}
+footer{
+  padding:1rem clamp(1rem,4vw,2.5rem) 2rem; color:var(--ink-soft); font-size:.75rem;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  border-top:1px solid var(--line);
+}
+
+/* ------------------------------------------------------------
+   HOVER-BOX (.tip)
+   One floating card, created by the script at the bottom and
+   reused for every hover. Hovering a table cell fills it with the
+   essay sentence(s) where that figure is used; hovering a figure
+   in the essay fills it with the matching table row.
+   pointer-events:none so the box never steals the hover.
+   ------------------------------------------------------------ */
+.tip{
+  position:fixed; left:0; top:0; z-index:30;
+  width:max-content; max-width:min(400px, calc(100vw - 20px));
+  padding:.7rem .8rem .75rem;
+  background:var(--panel); color:var(--ink);
+  border:1px solid var(--line); border-radius:8px;
+  box-shadow:0 8px 24px rgba(0,0,0,.16), 0 1px 3px rgba(0,0,0,.08);
+  pointer-events:none;
+  opacity:0; visibility:hidden; transform:translateY(3px);
+  transition:opacity .12s ease, transform .12s ease, visibility 0s .12s;
+}
+.tip.show{ opacity:1; visibility:visible; transform:none; transition-delay:0s; }
+.tip-row{ max-width:min(540px, calc(100vw - 20px)); }
+.tip-kicker{
+  display:block; font:600 .62rem -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft);
+}
+.tip-title{
+  display:block; margin:.1rem 0 .5rem;
+  font:600 .82rem -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.tip-snip{ margin:0; font-size:.88rem; line-height:1.5; }
+.tip-snip + .tip-snip{ margin-top:.55rem; padding-top:.55rem; border-top:1px solid var(--line); }
+/* The figure(s) being asked about, inside the quoted sentence */
+.tip-mark{
+  background:var(--active-soft); border-bottom:1px solid var(--active);
+  border-radius:3px; padding:0 1px;
+}
+.tip-note,.tip-more{
+  margin:0 0 .5rem; font:.7rem -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:var(--ink-soft);
+}
+.tip-more{ margin:.5rem 0 0; }
+/* Mini copy of the table row shown when hovering text in the essay */
+.tip-table{ border-collapse:collapse; width:auto; font-size:.72rem; }
+.tip-table th,.tip-table td{
+  padding:.3rem .45rem; white-space:nowrap; text-align:left;
+  border-bottom:1px solid var(--line); color:var(--ink);
+}
+.tip-table th{ color:var(--ink-soft); font-size:.66rem; border-bottom:1px solid var(--ink-soft); }
+.tip-table td.num{ text-align:left; color:var(--ink); }
+.tip-table th.hit,.tip-table td.hit{
+  background:var(--active-soft); box-shadow:0 0 0 1px var(--active) inset; font-weight:600;
+}
+@media (max-width:560px){ .tip-table th,.tip-table td{ white-space:normal; } }
+
+/* ------------------------------------------------------------
+   COLUMN SORTING
+   Every header cell in the data table is clickable. The arrow is
+   drawn with ::after (not real text) and driven by the aria-sort
+   attribute that the sorting script sets on the active header.
+   ------------------------------------------------------------ */
+.table-col thead th{ cursor:pointer; user-select:none; transition:color .15s ease; }
+.table-col thead th:hover{ color:var(--ink); }
+.table-col thead th:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px; }
+.table-col thead th::after{ content:"\2195"; margin-left:.35em; font-size:.8em; opacity:.35; }
+.table-col thead th[aria-sort="ascending"],
+.table-col thead th[aria-sort="descending"]{ color:var(--accent); }
+.table-col thead th[aria-sort="ascending"]::after{ content:"\25B2"; opacity:1; font-size:.65em; }
+.table-col thead th[aria-sort="descending"]::after{ content:"\25BC"; opacity:1; font-size:.65em; }
