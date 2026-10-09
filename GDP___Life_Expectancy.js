@@ -626,3 +626,194 @@
   window.addEventListener('scroll', hide, true);
   window.addEventListener('resize', hide);
 })();
+
+
+/* ------------------------------------------------------------
+   NEW FEATURES: COUNTRY SEARCH, FLAGS, AND THEME TOGGLE
+   ------------------------------------------------------------ */
+
+(function () {
+
+  
+/* ---------- COUNTRY FLAGS ---------- */
+
+const flagCodes = {
+  us: "🇺🇸",
+  cn: "🇨🇳",
+  jp: "🇯🇵",
+  de: "🇩🇪",
+  in: "🇮🇳",
+  uk: "🇬🇧",
+  fr: "🇫🇷",
+  it: "🇮🇹",
+  br: "🇧🇷",
+  ca: "🇨🇦",
+  ru: "🇷🇺",
+  kr: "🇰🇷",
+  au: "🇦🇺",
+  es: "🇪🇸",
+  mx: "🇲🇽",
+  id: "🇮🇩",
+  nl: "🇳🇱",
+  ch: "🇨🇭",
+  ng: "🇳🇬",
+  no: "🇳🇴"
+};
+
+document.querySelectorAll(
+  ".table-col td[data-group]"
+).forEach(function(cell) {
+
+  const code = cell.dataset.group;
+  const flag = flagCodes[code];
+
+  if (!flag) return;
+
+  // Prevent duplicate flags
+  if (cell.querySelector(".country-flag")) return;
+
+  const span = document.createElement("span");
+
+  span.className = "country-flag";
+  span.textContent = flag;
+  span.setAttribute("aria-hidden", "true");
+
+  cell.prepend(span);
+
+});
+
+
+
+  // ----------------------------------------------------------
+  // 2. COUNTRY SEARCH
+  // ----------------------------------------------------------
+
+  const searchInput = document.getElementById(
+    "countrySearch"
+  );
+
+  const searchStatus = document.getElementById(
+    "searchStatus"
+  );
+
+  const countryRows = Array.from(
+    document.querySelectorAll(".table-col tbody tr")
+  );
+
+  function searchCountries() {
+
+    const query = searchInput.value.trim().toLowerCase();
+    let matches = 0;
+    let exactMatch = null;
+
+    // Clear old selections and connector lines.
+    // This uses your group's existing click handler.
+    document.dispatchEvent(new MouseEvent("click"));
+
+    countryRows.forEach(function (row) {
+
+      const countryCell = row.querySelector(
+        "td[data-group]"
+      );
+
+      if (!countryCell) return;
+
+      const countryName = countryCell.textContent
+        .trim()
+        .toLowerCase();
+
+      const isMatch = countryName.includes(query);
+
+      // Show or hide the row.
+      row.hidden = !isMatch;
+      row.style.display = isMatch ? "" : "none";
+
+      if (isMatch) {
+        matches++;
+      }
+
+      if (query && countryName === query) {
+        exactMatch = countryCell;
+      }
+
+    });
+
+    // Update the results counter.
+    searchStatus.textContent =
+      matches + " of " + countryRows.length +
+      " countries shown";
+
+    // When an exact country name is entered,
+    // activate its existing highlighting system.
+    if (exactMatch) {
+      exactMatch.click();
+    }
+
+    // Recalculate connector lines after filtering.
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  searchInput.addEventListener("input", searchCountries);
+
+  // Display the initial number of countries.
+  searchCountries();
+
+
+  // ----------------------------------------------------------
+  // 3. LIGHT AND DARK MODE
+  // ----------------------------------------------------------
+
+  const themeButton = document.getElementById(
+    "themeToggle"
+  );
+
+  const savedTheme = localStorage.getItem("gdp-theme");
+
+  const prefersDark = window.matchMedia(
+    "(prefers-color-scheme: dark)"
+  ).matches;
+
+  let currentTheme = savedTheme ||
+    (prefersDark ? "dark" : "light");
+
+  function applyTheme(theme) {
+
+    currentTheme = theme;
+
+    document.documentElement.setAttribute(
+      "data-theme",
+      theme
+    );
+
+    themeButton.textContent = theme === "dark"
+      ? "Light mode"
+      : "Dark mode";
+
+    themeButton.setAttribute(
+      "aria-label",
+      "Switch to " +
+      (theme === "dark" ? "light" : "dark") +
+      " mode"
+    );
+  }
+
+  applyTheme(currentTheme);
+
+  themeButton.addEventListener("click", function (event) {
+
+    // Don't trigger the page's deselection handler.
+    event.stopPropagation();
+
+    const nextTheme = currentTheme === "dark"
+      ? "light"
+      : "dark";
+
+    applyTheme(nextTheme);
+
+    // Remember the selection after refreshing.
+    localStorage.setItem("gdp-theme", nextTheme);
+
+  });
+
+})();
+
