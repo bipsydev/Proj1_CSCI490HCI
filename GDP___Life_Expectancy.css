@@ -163,6 +163,8 @@ tbody tr:hover{ background:var(--accent-soft); }
 .hl{
   cursor:pointer; transition:background .15s ease, box-shadow .15s ease;
   border-radius:3px;
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none; touch-action:manipulation;
 }
 /* Dotted underline marks a clickable figure inside the essay text. */
 span.hl{

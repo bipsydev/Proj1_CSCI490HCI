@@ -245,6 +245,47 @@
     if(activeIds.length) drawLinesForSelections();
   }
 
+  function addLongPress(el, key, getIds){
+    var timer = null, longPressed = false, suppressClick = false;
+    function cancel(){
+      if(timer){ clearTimeout(timer); timer = null; }
+    }
+    el.addEventListener('touchstart', function(){
+      longPressed = false;
+      timer = setTimeout(function(){
+        longPressed = true;
+        suppressClick = true;
+        document.getSelection().removeAllRanges();
+        pin(key, getIds(), true);
+      }, 500);
+    }, { passive: true });
+    el.addEventListener('touchmove', cancel, { passive: true });
+    el.addEventListener('touchend', function(e){
+      cancel();
+      if(longPressed){
+        e.preventDefault();
+        longPressed = false;
+      }
+    }, { passive: false });
+    el.addEventListener('touchcancel', function(){
+      cancel();
+      longPressed = false;
+    }, { passive: true });
+    el.addEventListener('contextmenu', function(e){
+      if(suppressClick){
+        e.preventDefault();
+        suppressClick = false;
+      }
+    });
+    return function(){
+      if(suppressClick){
+        suppressClick = false;
+        return true;
+      }
+      return false;
+    };
+  }
+
   // --- Wiring: single-figure elements (data-id) -------------------
   // Every span in the essay and every non-name <td> in the table
   // that carries a data-id gets the same three listeners:
@@ -253,6 +294,7 @@
   //   click      -> control-click toggles this id; regular click clears all
   document.querySelectorAll('[data-id]').forEach(function(el){
     var id = el.dataset.id;
+    var suppressClick = addLongPress(el, id, function(){ return [id]; });
     el.addEventListener('mouseenter', function(e){
       hoverTarget = { key: id, id: id, ctrlKey: e.ctrlKey };
       refreshHover();
@@ -264,6 +306,7 @@
     });
     el.addEventListener('click', function(e){
       e.stopPropagation();
+      if(suppressClick()) return;
       pin(id, [id], e.ctrlKey);
     });
   });
@@ -274,6 +317,8 @@
   // clicking the country name affects the whole set at once.
   document.querySelectorAll('[data-group]').forEach(function(el){
     var code = el.dataset.group;
+    var key = 'group:' + code;
+    var suppressClick = addLongPress(el, key, function(){ return idsForGroup(code); });
     el.addEventListener('mouseenter', function(e){
       hoverTarget = { key: 'group:' + code, ids: idsForGroup(code), ctrlKey: e.ctrlKey };
       refreshHover();
@@ -287,7 +332,8 @@
     });
     el.addEventListener('click', function(e){
       e.stopPropagation();
-      pin('group:' + code, idsForGroup(code), e.ctrlKey);
+      if(suppressClick()) return;
+      pin(key, idsForGroup(code), e.ctrlKey);
     });
   });
 
