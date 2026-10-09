@@ -245,12 +245,45 @@
     if(activeIds.length) drawLinesForSelections();
   }
 
+  function idsForColumn(columnIndex){
+    var ids = [];
+    if(columnIndex === 0){
+      document.querySelectorAll('.table-col tbody [data-group]').forEach(function(cell){
+        ids = ids.concat(idsForGroup(cell.dataset.group));
+      });
+    } else {
+      document.querySelectorAll('.table-col tbody tr').forEach(function(row){
+        var cell = row.cells[columnIndex];
+        if(cell && cell.dataset.id) ids.push(cell.dataset.id);
+      });
+    }
+    return ids.filter(function(id, index){ return ids.indexOf(id) === index; });
+  }
+
+  document.querySelectorAll('.table-col thead th').forEach(function(th, columnIndex){
+    if(columnIndex === 0){
+      th.addEventListener('click', function(e){
+        if(!e.target.closest('.sort-button')) e.stopPropagation();
+      });
+      return;
+    }
+    var columnKey = 'column:' + columnIndex;
+    var suppressColumnClick = addLongPress(th, columnKey, function(){ return idsForColumn(columnIndex); });
+    th.addEventListener('click', function(e){
+      if(e.target.closest('.sort-button')) return;
+      e.stopPropagation();
+      if(suppressColumnClick()) return;
+      pin(columnKey, idsForColumn(columnIndex), e.ctrlKey);
+    });
+  });
+
   function addLongPress(el, key, getIds){
     var timer = null, longPressed = false, suppressClick = false;
     function cancel(){
       if(timer){ clearTimeout(timer); timer = null; }
     }
-    el.addEventListener('touchstart', function(){
+    el.addEventListener('touchstart', function(e){
+      if(e.target.closest && e.target.closest('.sort-button')) return;
       longPressed = false;
       timer = setTimeout(function(){
         longPressed = true;
@@ -375,8 +408,9 @@
 /* ================================================================
    TABLE SORTING SCRIPT
    ----------------------------------------------------------------
-   Click a column heading to sort ascending; click it again to
-   flip to descending. Numeric columns (the td.num ones) sort by
+  Click a column arrow once to sort descending, again to sort
+  ascending, and a third time to restore the original order.
+  Numeric columns (the td.num ones) sort by
    value ("$81,000", "2.5%", "1,412M" are parsed to numbers); the
    Country and Region columns sort alphabetically. Ties keep their
    original order. Rows are MOVED, not rebuilt, so every hover and
@@ -399,32 +433,58 @@
     return t;
   }
 
+  function updateSortControls(){
+    rows.forEach(function(r){ tbody.appendChild(r); });
+    ths.forEach(function(th, i){
+      var button = th.querySelector('.sort-button');
+      var active = i === state.col;
+      th.setAttribute('aria-sort', active ? (state.dir === 1 ? 'ascending' : 'descending') : 'none');
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.textContent = active ? (state.dir === 1 ? '▲' : '▼') : '↕';
+      var label = th.querySelector('.column-label').textContent;
+      button.setAttribute('aria-label', active
+        ? 'Sort by ' + label + ' currently ' + (state.dir === 1 ? 'ascending' : 'descending')
+        : 'Sort by ' + label + ' descending');
+    });
+  }
+
   function sortBy(c){
-    state.dir = (state.col === c) ? -state.dir : 1;
-    state.col = c;
+    if(state.col !== c){
+      state.col = c;
+      state.dir = -1;
+    } else if(state.dir === -1){
+      state.dir = 1;
+    } else {
+      state.col = -1;
+      state.dir = 1;
+      rows.sort(function(a, b){ return a._orig - b._orig; });
+      updateSortControls();
+      window.dispatchEvent(new Event('resize'));
+      return;
+    }
     var numeric = rows[0].cells[c].classList.contains('num');
     rows.sort(function(a, b){
       var x = val(a, c), y = val(b, c);
       var d = numeric ? x - y : x.localeCompare(y);
       return d * state.dir || a._orig - b._orig;
     });
-    rows.forEach(function(r){ tbody.appendChild(r); });
-    ths.forEach(function(th, i){
-      th.setAttribute('aria-sort', i === c ? (state.dir === 1 ? 'ascending' : 'descending') : 'none');
-    });
+    updateSortControls();
     // Rows moved, so any pinned connector line must be redrawn: the
     // first script already re-measures on "resize", so reuse that.
     window.dispatchEvent(new Event('resize'));
   }
 
   ths.forEach(function(th, i){
-    th.tabIndex = 0;                              // keyboard reachable
     th.setAttribute('aria-sort', 'none');
-    th.addEventListener('click', function(e){
-      if(e.ctrlKey) e.stopPropagation();
+    var sortButton = th.querySelector('.sort-button');
+    sortButton.classList.remove('active');
+    sortButton.setAttribute('aria-pressed', 'false');
+    sortButton.addEventListener('click', function(e){
+      e.stopPropagation();
       sortBy(i);
     });
-    th.addEventListener('keydown', function(e){
+    sortButton.addEventListener('keydown', function(e){
       if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); sortBy(i); }
     });
   });
@@ -445,7 +505,7 @@
 (function(){
   var tableCol = document.querySelector('.table-col');
   var heads = Array.prototype.map.call(
-    tableCol.querySelectorAll('thead th'), function(th){ return th.textContent; });
+    tableCol.querySelectorAll('thead th .column-label'), function(label){ return label.textContent; });
 
   // code -> display name, read from the first column ("us" -> "United States")
   var names = {};
