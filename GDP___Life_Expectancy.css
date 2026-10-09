@@ -179,13 +179,22 @@ tbody tr:hover{ background:var(--accent-soft); }
 .sort-button.active{ color:var(--panel); border-color:var(--accent); background:var(--accent); }
 .table-col thead th[aria-sort="ascending"],
 .table-col thead th[aria-sort="descending"]{ color:var(--accent); }
-/* position:relative isn't visual on its own — it's here so any
-   future absolutely-positioned marker inside a cell (none
-/* Country-name cells (the ones with data-group rather than a
-   single data-id) get the same dotted-underline affordance as
-   text spans, so it's visually clear the whole row is clickable. */
-td.hl[data-group]{ border-bottom:1px dotted var(--accent); }
-td.hl[data-group].active{ border-bottom:1px solid var(--selection-color, var(--active)); }
+.hl{
+  cursor:pointer; transition:background .15s ease, box-shadow .15s ease;
+  border-radius:3px;
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none; touch-action:manipulation;
+}
+/* Dashed underlines show that linked essay figures and table cells
+   are interactive. */
+span.hl,
+td.hl[data-id],
+td.hl[data-group]{
+  text-decoration-line:underline;
+  text-decoration-style:dashed;
+  text-decoration-color:var(--accent);
+  text-underline-offset:.2em;
+}
 /* Generic "selected" look shared by any .hl element (span or td)
    once the script adds the .active class to it. */
 .hl.active{
@@ -198,7 +207,13 @@ td.hl[data-group].active{ border-bottom:1px solid var(--selection-color, var(--a
 span.hl.active{
   background:var(--active-soft);
   background:color-mix(in srgb, var(--selection-color, var(--active)) 18%, transparent);
-  border-bottom:1px solid var(--selection-color, var(--active));
+  text-decoration-style:solid;
+  text-decoration-color:var(--selection-color, var(--active));
+}
+td.hl[data-id].active,
+td.hl[data-group].active{
+  text-decoration-style:solid;
+  text-decoration-color:var(--selection-color, var(--active));
 }
 .scroll-note{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
